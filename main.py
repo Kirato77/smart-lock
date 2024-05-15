@@ -5,6 +5,8 @@ import _thread
 import utime
 from machine import Pin, PWM
 
+global guess, secret_pin
+
 # Mappage des touches du clavier à leurs lettres correspondantes
 key_map = [['0', 'F', 'E', 'D'],
            ['7', '8', '9', 'C'],
@@ -30,7 +32,7 @@ pwm.freq(50)
 # Password and WiFi credentials
 secret_pin = ['1', '2']
 guess = []
-ssid = 'SSID'
+ssid = 'ssid'
 password = 'password'
 
 def connect():
@@ -58,27 +60,97 @@ def webpage():
     return """
         <!DOCTYPE html>
         <html>
-        <form action="./unlock">
-        <input type="submit" value="Unlock" />
-        </form>
-        </body>
+            <header>
+                <title> Unsmart Lock </title>
+            </header>
+            <body>
+                <style>
+                    body {
+                        font-family: Arial, sans-serif;
+                        margin: 0;
+                        padding: 0;
+                    }
+
+                    header {
+                        background-color: #333;
+                        color: #fff;
+                        padding: 10px 0;
+                        text-align: center;
+                    }
+
+                    section {
+                        padding: 20px;
+                        text-align: center;
+                    }
+
+                    h1 {
+                        color: #333;
+                        font-size: 50px;
+                    }
+
+                    input[type="text"] {
+                        width: 200px;
+                        padding: 10px;
+                        margin-bottom: 10px;
+                    }
+
+                    button {
+                        padding: 10px 20px;
+                        background-color: #333;
+                        color: #fff;
+                        border: none;
+                        cursor: pointer;
+                        font-weight: bold;
+                    }
+
+                    button:hover {
+                        background-color: #7d7d7d;
+                    }
+                </style>
+                <section>
+                    <h1>Smart Lock Remote</h1>
+                    <input type="text" placeholder="Enter password" id="guess" />
+                    <button onClick="check()"> Unlock </button>
+                </section>
+            
+                <script>
+                    function check(){
+                        var code = document.getElementById("guess").value;
+                        var xhttp = new XMLHttpRequest();
+                        xhttp.open('GET', '/check/'+code, true);
+                        xhttp.send();
+                    }
+                    function update(){
+                        location.reload(true);
+                    }
+                </script>
+            </body>
         </html>
         """
 
 def serve(connection):
     # Fonction pour servir les requêtes HTTP
+    global secret_pin
+    
     while True:
         client = connection.accept()[0]
         request = client.recv(1024)
         request = str(request)
         try:
-            request = request.split()[1]
+            split_request = request.split()
+            split2_request = split_request[1].split('/')
+            code = split2_request[2]
+            print(code)
         except IndexError:
             pass
-        if request =='/unlock?':
-            unlock()
-            utime.sleep(2)
-            lock()
+        if request.find('/check/') == 6:
+            split_code = [str(char) for char in code]
+            if split_code == secret_pin:
+                unlock()
+                utime.sleep(2)
+                lock()
+            else:
+                print("Website: wrong code")
         html = webpage()
         client.send(html)
         client.close()
@@ -150,13 +222,14 @@ def change_code():
                             print("No modifications")
                             secret_pin = backup_pin
                             unlockLED.off()
-                            return
+                            clear_guess()
+                            return None
                         elif key_press == 'A':
                             display(11)
                             utime.sleep(0.5)
                             print("PIN modified" if len(secret_pin) > 0 else "No modifications")
                             unlockLED.off()
-                            return
+                            return None
                         else:
                             display(15)
                         print("You pressed", key_press)
@@ -168,8 +241,10 @@ def change_code():
         blink_led(lockedLED, 3)
 
 def clear_guess():
+    global guess
     # Clear guess list
-    guess.clear()
+    for x in range(len(guess)):
+        guess.pop()
     
 def display(decimal):
     # Display decimal value on LEDs
@@ -204,7 +279,8 @@ def scan_keys():
                     display(15)
                 print("You pressed", key_press)
                 utime.sleep(0.3)
-                guess.append(key_press)
+                if key_press.isdigit() and 0 <= int(key_press) <= 9:
+                    guess.append(key_press)
         row_pins[row].low()
     
 def main():
